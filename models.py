@@ -30,6 +30,7 @@ class ValueNet(torch.nn.Module):
 class PPO(torch.nn.Module):
     def __init__(self):
         super(PPO, self).__init__()
+        self.device = "cpu"
         # 210 + construction points + mobile points + health
         self.state_dim = 213
         self.hidden_dim = 512
@@ -46,7 +47,7 @@ class PPO(torch.nn.Module):
         self.lmbda = 0.95
         self.epochs = 10  # 一条序列的数据用来训练轮数
         self.eps = 0.2  # PPO中截断范围的参数
-        self.device = "cpu"
+
 
     def take_action(self, state):
         state = torch.tensor([state], dtype=torch.float).to(self.device)
