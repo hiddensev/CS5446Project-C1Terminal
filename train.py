@@ -1,5 +1,4 @@
 import torch
-from trl.commands.scripts.ppo_multi_adapter import model
 from models import *
 import os
 
