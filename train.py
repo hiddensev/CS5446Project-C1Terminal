@@ -1,7 +1,7 @@
 import torch
+import json
 from models import *
 import os
-
 
 def init_PPO_model(model_pth):
     agent = PPO()
@@ -14,9 +14,10 @@ def load_PPO_model(model_pth):
     return agent
 
 
-def get_trainisition_dict():
-    dict = {}
-    return dict
+def get_trainisition_dict(file):
+    tf = open(file, "r")
+    transition_dict = json.load(tf)
+    return transition_dict
 
 
 def train(epochs, run_dir, alg1_dir, alg2_dir, model_dir, model_init = True):
@@ -25,7 +26,7 @@ def train(epochs, run_dir, alg1_dir, alg2_dir, model_dir, model_init = True):
         init_PPO_model(model_dir)
     for i in range(epochs):
         os.system(run_dir + " " + alg1_dir + " " + alg2_dir)
-        transition_dict = get_trainisition_dict()
+        transition_dict = get_trainisition_dict("transition_dict.json")
         agent = load_PPO_model(model_pth=model_dir)
         agent.update(transition_dict)
         torch.save(agent.state_dict(), model_dir)
