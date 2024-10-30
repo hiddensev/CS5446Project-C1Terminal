@@ -36,6 +36,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.next_state = np.zeros(213)
         self.action = np.zeros(210 * 8)
         self.reward = 0
+        self.my_health = 30
+        self.en_health = 30
 
         # initialize the transition dict
         self.transition_dict = {
@@ -82,7 +84,7 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         else:
             self.next_state = self.get_state(game_state)
-            self.rewards = self.get_rewards(game_state)
+            self.rewards = self.get_reward(game_state)
 
             self.transition_dict['states'].append(self.state)
             self.transition_dict['actions'].append(self.action)
@@ -101,8 +103,8 @@ class AlgoStrategy(gamelib.AlgoCore):
     def get_state(self, game_state):
         pass
     #
-    def get_rewards(self, game_state):
-        pass
+    def get_reward(self, game_state):
+        return self.en_health - game_state.enemy_health - (self.my_health - game_state.my_health )
 
     # state dim: 213
     def get_actions(self, states):
