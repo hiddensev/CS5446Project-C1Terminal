@@ -1,3 +1,5 @@
+import numpy as np
+
 import gamelib
 import random
 import math
@@ -26,13 +28,22 @@ class AlgoStrategy(gamelib.AlgoCore):
         seed = random.randrange(maxsize)
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
+
+        # initialize the agent
         self.agent = load_PPO_model("./ppo_model.pth")
+
+        self.state = np.zeros(213)
+        self.next_state = np.zeros(213)
+        self.action = np.zeros(210 * 8)
+        self.reward = 0
+
+        # initialize the transition dict
         self.transition_dict = {
-            "state": [],
-            "action": [],
-            "reward": [],
-            "done": [],
-            "next_state": [],
+            "states": [],
+            "actions": [],
+            "rewards": [],
+            "dones": [],
+            "next_states": [],
         }
 
 
@@ -66,10 +77,24 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
-        states = self.get_state(game_state)
-        rewards = self.get_rewards(game_state)
-        actions = self.get_actions(states)
-        self.take_action(actions)
+        if game_state.turn_number == 0:
+            self.state = self.get_state(game_state)
+
+        else:
+            self.next_state = self.get_state(game_state)
+            self.rewards = self.get_rewards(game_state)
+
+            self.transition_dict['states'].append(self.state)
+            self.transition_dict['actions'].append(self.action)
+            self.transition_dict['rewards'].append(self.reward)
+            self.transition_dict['next_states'].append(self.next_state)
+            self.transition_dict['dones'].append(0)
+
+            self.state = self.next_state
+
+        self.action = self.get_actions(self.state)
+        # store all the things
+        self.take_action(self.action)
 
         game_state.submit_turn()
 
