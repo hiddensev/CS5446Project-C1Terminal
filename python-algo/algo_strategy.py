@@ -138,6 +138,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # if meet the end frame, save all the states into json file
         if "endStats" in state:
             json_file = open("transition_dict.json", "w")
+            self.transition_dict['dones'][-1] = 1
             json.dump(self.transition_dict, json_file)
             json_file.close()
 
