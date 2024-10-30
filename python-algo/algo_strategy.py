@@ -27,6 +27,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
         self.agent = load_PPO_model("./ppo_model.pth")
+        self.transition_dict = {
+            "state": [],
+            "action": [],
+            "reward": [],
+            "done": [],
+            "next_state": [],
+        }
 
 
     def on_game_start(self, config):
@@ -102,6 +109,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         state = json.loads(turn_string)
         events = state["events"]
         breaches = events["breach"]
+
+        # if meet the end frame, save all the states into json file
+        if "endStats" in state:
+            json_file = open("transition_dict.json", "w")
+            json.dump(self.transition_dict, json_file)
+            json_file.close()
+
         for breach in breaches:
             location = breach[0]
             unit_owner_self = True if breach[4] == 1 else False
