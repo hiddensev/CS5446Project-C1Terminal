@@ -79,9 +79,10 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
+        # for the first turn, we have no idea of next_state, rewards, just update the state
         if game_state.turn_number == 0:
             self.state = self.get_state(game_state)
-
+        # for the second turn and turns after, we can record state, next_state, action and reward
         else:
             self.next_state = self.get_state(game_state)
             self.rewards = self.get_reward(game_state)
@@ -94,17 +95,21 @@ class AlgoStrategy(gamelib.AlgoCore):
 
             self.state = self.next_state
 
+        self.update_health(game_state)
         self.action = self.get_actions(self.state)
-        # store all the things
         self.take_action(self.action)
 
         game_state.submit_turn()
 
     def get_state(self, game_state):
         pass
-    #
+
+    def update_health(self, game_state):
+        self.my_health = game_state.my_health
+        self.en_health = game_state.enemy_health
+
     def get_reward(self, game_state):
-        return self.en_health - game_state.enemy_health - (self.my_health - game_state.my_health )
+        return self.en_health - game_state.enemy_health - (self.my_health - game_state.my_health)
 
     # state dim: 213
     def get_actions(self, states):
@@ -112,7 +117,8 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     #
     def take_action(self, actions):
-        pass
+        for i in range(0, 8*210, 210):
+
 
     # pos range from 0 - 209
     def position_map(pos):
