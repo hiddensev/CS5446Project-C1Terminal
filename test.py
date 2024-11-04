@@ -43,7 +43,7 @@ input_tensor = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0])
 softmax_result = torch.softmax(input_tensor, dim=0)
 
 # 选取softmax结果大于0.1的元素及其索引
-selected_indices = torch.nonzero(softmax_result > 0.1).squeeze()
+selected_indices = torch.nonzero(softmax_result > 0.1).squeeze().numpy()
 selected_elements = softmax_result[softmax_result > 0.1]
 
 print("Softmax结果:", softmax_result)

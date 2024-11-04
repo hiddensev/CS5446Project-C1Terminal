@@ -40,6 +40,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.reward = 0
         self.my_health = 30
         self.en_health = 30
+        self.device = "cpu"
 
         # initialize the transition dict
         self.transition_dict = {
@@ -56,13 +57,22 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
-        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP
+        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP, UNIT_TYPE_TO_INDEX
+
         WALL = config["unitInformation"][0]["shorthand"]
         SUPPORT = config["unitInformation"][1]["shorthand"]
         TURRET = config["unitInformation"][2]["shorthand"]
         SCOUT = config["unitInformation"][3]["shorthand"]
         DEMOLISHER = config["unitInformation"][4]["shorthand"]
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
+        UNIT_TYPE_TO_INDEX = {
+            WALL: 0,
+            SUPPORT: 1,
+            TURRET: 2,
+            SCOUT: 3,
+            DEMOLISHER: 4,
+            INTERCEPTOR: 5,
+        }
         MP = 1
         SP = 0
         # This is a good place to do initial setup
@@ -123,7 +133,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                     state_pos = game_pos_map(i, j)
                     units = game_state.game_map[i, j]
                     if units:
-                        res[state_pos] = game_state.UNIT_TYPE_TO_INDEX[units[0].unit_type]
+                        res[state_pos] = UNIT_TYPE_TO_INDEX[units[0].unit_type]
         return res
 
 
@@ -138,8 +148,10 @@ class AlgoStrategy(gamelib.AlgoCore):
     # state dim: 213
     # return dim: 8 * 210
     def get_actions(self, states):
-        actions = self.agent.take_action(states)
+        input_state = torch.tensor([states], dtype=torch.float).to(self.device)
+        actions = self.agent.actor(input_state)
         actions = torch.reshape(actions, (8, -1))
+        print(actions.shape)
         return actions
 
     #
@@ -150,34 +162,34 @@ class AlgoStrategy(gamelib.AlgoCore):
         # 7: Remove
         for idx, action in enumerate(actions):
             action = F.softmax(action)
-            idx = torch.nonzero(action > 0.1).squeeze()
+            selected_idx = torch.nonzero(action > 0.001).squeeze().numpy()
             locations = []
-            for i in idx:
+            for i in selected_idx:
                 x, y = self.state_pos_map(i)
                 locations.append([x, y])
             # WALL
-            if idx == 0:
+            if idx == 0 and locations:
                 game_state.attempt_spawn(WALL, locations)
             # SUPPORT
-            elif idx == 1:
+            elif idx == 1 and locations:
                 game_state.attempt_spawn(SUPPORT, locations)
             # TURRET
-            elif idx == 2:
+            elif idx == 2 and locations:
                 game_state.attempt_spawn(TURRET, locations)
             # SCOUT
-            elif idx == 3:
+            elif idx == 3 and locations:
                 game_state.attempt_spawn(SCOUT, locations)
             # DEMOLISHER
-            elif idx == 4:
+            elif idx == 4 and locations:
                 game_state.attempt_spawn(DEMOLISHER, locations)
             # INTERCEPTOR
-            elif idx == 5:
+            elif idx == 5 and locations:
                 game_state.attempt_spawn(INTERCEPTOR, locations)
             # REMOVE
-            elif idx == 6:
+            elif idx == 6 and locations:
                 game_state.attempt_remove(locations)
             # UPGRADE
-            elif idx == 7:
+            elif idx == 7 and locations:
                 game_state.attempt_upgrade(locations)
 
 
