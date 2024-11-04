@@ -81,6 +81,7 @@ class AlgoCore(object):
                     """
                     This is the end game message. This means the game is over so break and finish the program.
                     """
+                    self.on_action_frame(game_state_string)
                     debug_write("Got end state, game over. Stopping algo.")
                     break
                 else:

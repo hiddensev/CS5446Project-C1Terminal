@@ -10,6 +10,7 @@ from models import *
 from test import game_pos_map
 from train import *
 import torch
+import pickle
 
 """
 Most of the algo code you write will be in this file unless you create new
@@ -32,7 +33,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Random seed: {}'.format(seed))
 
         # initialize the agent
-        self.agent = load_PPO_model("./ppo_model.pth")
+        self.agent = load_PPO_model("./ppo_model.pth").eval()
 
         self.state = np.zeros(426)
         self.next_state = np.zeros(426)
@@ -107,8 +108,9 @@ class AlgoStrategy(gamelib.AlgoCore):
             self.state = self.next_state
 
         self.update_health(game_state)
-        self.action = self.get_actions(self.state)
-        self.take_action(self.action, game_state)
+        action = self.get_actions(self.state)
+        self.action = action.detach().numpy()
+        self.take_action(action, game_state)
 
         game_state.submit_turn()
 
@@ -193,7 +195,6 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_upgrade(locations)
 
 
-
     # pos range from 0 - 209
     def state_pos_map(self, pos):
         x, y = 13, 0
@@ -237,11 +238,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         breaches = events["breach"]
 
         # if meet the end frame, save all the states into json file
-        if "endStats" in state:
-            json_file = open("transition_dict.json", "w")
-            self.transition_dict['dones'][-1] = 1
-            json.dump(self.transition_dict, json_file)
-            json_file.close()
+        if int(state.get("turnInfo")[0]) == 2:
+            self.transition_dict["dones"][-1] = 1
+            np.save('transition_dict.npy', self.transition_dict)
 
         for breach in breaches:
             location = breach[0]
