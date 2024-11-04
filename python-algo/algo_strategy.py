@@ -86,7 +86,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # for the second turn and turns after, we can record state, next_state, action and reward
         else:
             self.next_state = self.get_state(game_state)
-            self.rewards = self.get_reward(game_state)
+            self.reward = self.get_reward(game_state)
 
             self.transition_dict['states'].append(self.state)
             self.transition_dict['actions'].append(self.action)
@@ -173,12 +173,13 @@ class AlgoStrategy(gamelib.AlgoCore):
             # INTERCEPTOR
             elif idx == 5:
                 game_state.attempt_spawn(INTERCEPTOR, locations)
-            # UPGRADE
-            elif idx == 6:
-                game_state.attempt_upgrade(locations)
             # REMOVE
-            elif idx == 7:
+            elif idx == 6:
                 game_state.attempt_remove(locations)
+            # UPGRADE
+            elif idx == 7:
+                game_state.attempt_upgrade(locations)
+
 
 
     # pos range from 0 - 209
