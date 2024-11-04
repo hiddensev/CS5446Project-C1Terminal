@@ -32,7 +32,7 @@ class PPO(torch.nn.Module):
         super(PPO, self).__init__()
         self.device = "cpu"
         # 210 + construction points + mobile points + health
-        self.state_dim = 213
+        self.state_dim = 426
         self.hidden_dim = 512
         self.action_dim = 210 * 8
         self.actor_lr = 1e-3

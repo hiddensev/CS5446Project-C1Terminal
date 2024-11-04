@@ -7,7 +7,9 @@ import warnings
 from sys import maxsize
 import json
 from models import *
+from test import game_pos_map
 from train import *
+import torch
 
 """
 Most of the algo code you write will be in this file unless you create new
@@ -32,8 +34,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         # initialize the agent
         self.agent = load_PPO_model("./ppo_model.pth")
 
-        self.state = np.zeros(213)
-        self.next_state = np.zeros(213)
+        self.state = np.zeros(426)
+        self.next_state = np.zeros(426)
         self.action = np.zeros(210 * 8)
         self.reward = 0
         self.my_health = 30
@@ -47,7 +49,6 @@ class AlgoStrategy(gamelib.AlgoCore):
             "dones": [],
             "next_states": [],
         }
-
 
     def on_game_start(self, config):
         """ 
@@ -97,12 +98,35 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         self.update_health(game_state)
         self.action = self.get_actions(self.state)
-        self.take_action(self.action)
+        self.take_action(self.action, game_state)
 
         game_state.submit_turn()
 
     def get_state(self, game_state):
-        pass
+        res = np.zeros(426)
+        # get resources
+        my_points = game_state.get_resources(0)
+        en_points = game_state.get_resources(1)
+        res[211], res[212] = my_points[0], my_points[1]
+        res[424], res[425] = en_points[0], en_points[1]
+
+        # get health
+        my_health = game_state.my_health
+        en_health = game_state.enemy_health
+        res[210] = my_health
+        res[423] = en_health
+
+        # get constructions:
+        for i in range(28):
+            for j in range(28):
+                if game_state.game_map.in_arena_bounds((i, j)):
+                    state_pos = game_pos_map(i, j)
+                    units = game_state.game_map[i, j]
+                    if units:
+                        res[state_pos] = game_state.UNIT_TYPE_TO_INDEX[units[0].unit_type]
+        return res
+
+
 
     def update_health(self, game_state):
         self.my_health = game_state.my_health
@@ -112,16 +136,53 @@ class AlgoStrategy(gamelib.AlgoCore):
         return self.en_health - game_state.enemy_health - (self.my_health - game_state.my_health)
 
     # state dim: 213
+    # return dim: 8 * 210
     def get_actions(self, states):
-        return self.agent.take_action(states)
+        actions = self.agent.take_action(states)
+        actions = torch.reshape(actions, (8, -1))
+        return actions
 
     #
-    def take_action(self, actions):
-        for i in range(0, 8*210, 210):
+    def take_action(self, actions, game_state):
+        # 0, 1, 2: Construction
+        # 3, 4, 5: Attack
+        # 6: Upgrade
+        # 7: Remove
+        for idx, action in enumerate(actions):
+            action = F.softmax(action)
+            idx = torch.nonzero(action > 0.1).squeeze()
+            locations = []
+            for i in idx:
+                x, y = self.state_pos_map(i)
+                locations.append([x, y])
+            # WALL
+            if idx == 0:
+                game_state.attempt_spawn(WALL, locations)
+            # SUPPORT
+            elif idx == 1:
+                game_state.attempt_spawn(SUPPORT, locations)
+            # TURRET
+            elif idx == 2:
+                game_state.attempt_spawn(TURRET, locations)
+            # SCOUT
+            elif idx == 3:
+                game_state.attempt_spawn(SCOUT, locations)
+            # DEMOLISHER
+            elif idx == 4:
+                game_state.attempt_spawn(DEMOLISHER, locations)
+            # INTERCEPTOR
+            elif idx == 5:
+                game_state.attempt_spawn(INTERCEPTOR, locations)
+            # UPGRADE
+            elif idx == 6:
+                game_state.attempt_upgrade(locations)
+            # REMOVE
+            elif idx == 7:
+                game_state.attempt_remove(locations)
 
 
     # pos range from 0 - 209
-    def position_map(pos):
+    def state_pos_map(self, pos):
         x, y = 13, 0
         count = 28
         while pos >= count:
@@ -130,6 +191,25 @@ class AlgoStrategy(gamelib.AlgoCore):
             pos -= count
             count -= 2
         return x, y + pos
+
+
+    def game_pos_map(self, x, y):
+        count = 28
+        res = 0
+        if x >= 14:
+            while x > 14:
+                res += count
+                count -= 2
+                x -= 1
+            res += y - (28 - count) // 2 + 213
+        else:
+            while x < 13:
+                res += count
+                x += 1
+                count -= 2
+            res += y - (28 - count) // 2
+        return res
+
 
     def on_action_frame(self, turn_string):
         """
