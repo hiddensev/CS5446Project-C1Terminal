@@ -29,7 +29,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         super().__init__()
         seed = random.randrange(maxsize)
         random.seed(seed)
-        gamelib.debug_write('Random seed: {}'.format(seed))
+        #gamelib.debug_write('Random seed: {}'.format(seed))
 
         # initialize the agent
         self.agent = load_PPO_model("./ppo_model.pth").eval()
@@ -40,7 +40,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.reward = 0
         self.my_health = 30
         self.en_health = 30
-        self.device = "cpu"
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # initialize the transition dict
         self.transition_dict = {
@@ -55,7 +55,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         """ 
         Read in config and perform any initial setup here 
         """
-        gamelib.debug_write('Configuring your custom algo strategy...')
+        #gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
         global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP, UNIT_TYPE_TO_INDEX
 
@@ -87,7 +87,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         game engine.
         """
         game_state = gamelib.GameState(self.config, turn_state)
-        gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
+        #gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  #Comment or remove this line to enable warnings.
 
         # for the first turn, we have no idea of next_state, rewards, just update the state
@@ -144,15 +144,20 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.en_health = game_state.enemy_health
 
     def get_reward(self, game_state):
-        return self.en_health - game_state.enemy_health - (self.my_health - game_state.my_health)
+        # main objective: reduce enemy health and reserve my health
+        health_diff = 50*(self.en_health - game_state.enemy_health) - 100*(self.my_health - game_state.my_health)
+        # reserving points is good
+        # res_diff = 0.1*(sum(game_state.get_resources(0)) - sum(game_state.get_resources(1)))
+        # invalid actions are punished in take_action() for quick learning
+        return self.reward + health_diff
 
     # state dim: 213
     # return dim: 8 * 210
     def get_actions(self, states):
-        input_state = torch.tensor([states], dtype=torch.float).to(self.device)
+        input_state = torch.tensor(np.array([states]), dtype=torch.float).to(self.device)
         actions = self.agent.actor(input_state)
         actions = torch.reshape(actions, (8, -1))
-        print(actions.shape)
+        #gamelib.debug_write(f"Actions shape: {actions.shape}")
         return actions
 
     #
@@ -162,12 +167,28 @@ class AlgoStrategy(gamelib.AlgoCore):
         # 6: Upgrade
         # 7: Remove
         for idx, action in enumerate(actions):
-            action = F.softmax(action)
-            selected_idx = torch.nonzero(action > 0.001).squeeze().numpy()
+            # normalize the probability map of this action
+            action,_ = torch.sort(F.softmax(action, dim=0))
+            # filter out locations with probability less than 0.0005
+            selected_idx = torch.nonzero(action>0.0005).squeeze().numpy()
+            # get the locations
             locations = []
             for i in selected_idx:
                 x, y = self.state_pos_map(i)
                 locations.append([x, y])
+
+            # filter out invalid locations and punish invalid actions
+            self.reward = 0 # reset from last turn
+            ori_loc_num = len(locations)
+            if idx in [0, 1, 2]: # construction only place at empty spots
+                locations = [loc for loc in locations if len(game_state.game_map[loc[0], loc[1]]) == 0]
+            elif idx in [3, 4, 5]: # attack only place at borders
+                borders = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
+                locations = [loc for loc in locations if loc in borders]
+            elif idx in [6, 7]: # only remove/upgrade if there is a unit
+                locations = [loc for loc in locations if len(game_state.game_map[loc[0], loc[1]]) > 0]
+            self.reward -= ori_loc_num - len(locations)
+
             # WALL
             if idx == 0 and locations:
                 game_state.attempt_spawn(WALL, locations)
@@ -247,9 +268,9 @@ class AlgoStrategy(gamelib.AlgoCore):
             # When parsing the frame data directly, 
             # 1 is integer for yourself, 2 is opponent (StarterKit code uses 0, 1 as player_index instead)
             if not unit_owner_self:
-                gamelib.debug_write("Got scored on at: {}".format(location))
+                #gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
-                gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
+                #gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
 
 
 if __name__ == "__main__":

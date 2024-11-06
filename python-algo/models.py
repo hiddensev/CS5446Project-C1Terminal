@@ -12,6 +12,10 @@ class PolicyNet(torch.nn.Module):
         self.fc1 = torch.nn.Linear(state_dim, hidden_dim)
         self.fc2 = torch.nn.Linear(hidden_dim, action_dim)
 
+        # Initialize the final layer with zeros to get uniform probabilities
+        torch.nn.init.zeros_(self.fc2.weight)
+        torch.nn.init.zeros_(self.fc2.bias)
+
     def forward(self, x):
         x = F.relu(self.fc1(x))
         return F.softmax(self.fc2(x), dim=1)
@@ -31,7 +35,7 @@ class ValueNet(torch.nn.Module):
 class PPO(torch.nn.Module):
     def __init__(self):
         super(PPO, self).__init__()
-        self.device = "cpu"
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # 210 + construction points + mobile points + health
         self.state_dim = 426
         self.hidden_dim = 512
@@ -58,15 +62,16 @@ class PPO(torch.nn.Module):
         return action.item()
 
     def update(self, transition_dict):
-        states = torch.tensor(transition_dict['states'],
+        states = torch.tensor(np.array(transition_dict['states']),
                               dtype=torch.float).to(self.device)
-        actions = torch.tensor(transition_dict['actions']).view(-1, 1).to(
-            self.device)
-        rewards = torch.tensor(transition_dict['rewards'],
+        actions = torch.tensor(np.array(transition_dict['actions']), dtype=torch.float).to(self.device)
+        actions = actions.reshape(actions.shape[0], -1)  # Flattens to [56, 1680]
+        
+        rewards = torch.tensor(np.array(transition_dict['rewards']),
                                dtype=torch.float).view(-1, 1).to(self.device)
-        next_states = torch.tensor(transition_dict['next_states'],
+        next_states = torch.tensor(np.array(transition_dict['next_states']),
                                    dtype=torch.float).to(self.device)
-        dones = torch.tensor(transition_dict['dones'],
+        dones = torch.tensor(np.array(transition_dict['dones']),
                              dtype=torch.float).view(-1, 1).to(self.device)
         td_target = rewards + self.gamma * self.critic(next_states) * (1 -
                                                                        dones)
@@ -74,10 +79,11 @@ class PPO(torch.nn.Module):
         advantage = rl_utils.compute_advantage(self.gamma, self.lmbda,
                                                td_delta.cpu()).to(self.device)
         old_log_probs = torch.log(self.actor(states).gather(1,
-                                                            actions)).detach()
+                                                            actions.long())).detach()
+        episode_return = torch.sum(rewards).item()
 
         for _ in range(self.epochs):
-            log_probs = torch.log(self.actor(states).gather(1, actions))
+            log_probs = torch.log(self.actor(states).gather(1, actions.long()))
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1 - self.eps,
@@ -91,3 +97,4 @@ class PPO(torch.nn.Module):
             critic_loss.backward()
             self.actor_optimizer.step()
             self.critic_optimizer.step()
+        return episode_return

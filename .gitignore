@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+replays/
+python-algo/*.txt
+python-algo/*.pth
+python-algo/*.npy
