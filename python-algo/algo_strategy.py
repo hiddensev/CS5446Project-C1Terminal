@@ -7,7 +7,6 @@ import warnings
 from sys import maxsize
 import json
 from models import *
-from test import game_pos_map
 from train import *
 import torch
 import pickle
@@ -132,7 +131,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         for i in range(28):
             for j in range(28):
                 if game_state.game_map.in_arena_bounds((i, j)):
-                    state_pos = game_pos_map(i, j)
+                    state_pos = self.game_pos_map(i, j)
                     units = game_state.game_map[i, j]
                     if units:
                         res[state_pos] = UNIT_TYPE_TO_INDEX[units[0].unit_type]
@@ -239,7 +238,7 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # if meet the end frame, save all the states into json file
         if int(state.get("turnInfo")[0]) == 2:
-            self.transition_dict["dones"][-1] = 1
+            self.transition_dict['dones'] = 0
             np.save('transition_dict.npy', self.transition_dict)
 
         for breach in breaches:

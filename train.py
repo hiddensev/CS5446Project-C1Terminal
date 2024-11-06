@@ -33,7 +33,7 @@ def train(epochs, run_dir, alg1_dir, alg2_dir, model_dir, model_init = True):
 
 
 if __name__ == "__main__":
-    epochs = 5
+    epochs = 2
     run_dir = "/Users/xutao/Desktop/CS5446/C1GamesStarterKit/scripts/run_match.sh"
     alg1_dir = "/Users/xutao/Desktop/CS5446/CS5446Project-C1Terminal/python-algo"
     alg2_dir = "/Users/xutao/Desktop/CS5446/C1GamesStarterKit/python-algo"
