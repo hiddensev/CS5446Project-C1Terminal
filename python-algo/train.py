@@ -44,7 +44,7 @@ def train(epochs, run_dir, alg1_dir, alg2_dir, model_dir, model_init = True):
 
 
 if __name__ == "__main__":
-    epochs = 10
+    epochs = 1
     run_dir = "/Users/hiddensev/Documents/NUS/5446-AI-planning/Project/original/scripts/run_match.sh"
     alg1_dir = "/Users/hiddensev/Documents/GitHub/hiddensev/CS5446Project-C1Terminal/python-algo"
     alg2_dir = "/Users/hiddensev/Documents/NUS/5446-AI-planning/Project/original/python-algo"

@@ -12,6 +12,10 @@ class PolicyNet(torch.nn.Module):
         self.fc1 = torch.nn.Linear(state_dim, hidden_dim)
         self.fc2 = torch.nn.Linear(hidden_dim, action_dim)
 
+        # 初始化权重
+        torch.nn.init.xavier_uniform_(self.fc1.weight)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
+
     def forward(self, x):
         x = F.relu(self.fc1(x))
         return F.sigmoid(self.fc2(x))

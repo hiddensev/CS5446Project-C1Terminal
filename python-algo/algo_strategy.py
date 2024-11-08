@@ -38,8 +38,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.next_state = np.zeros(426)
         self.action = np.zeros(210 * 8)
         self.reward = 0
-        self.my_health = 30
-        self.en_health = 30
+        self.my_health = 40
+        self.en_health = 40
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # initialize the transition dict
@@ -57,7 +57,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         #gamelib.debug_write('Configuring your custom algo strategy...')
         self.config = config
-        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, MP, SP, UNIT_TYPE_TO_INDEX
+        global WALL, SUPPORT, TURRET, SCOUT, DEMOLISHER, INTERCEPTOR, REMOVE, UPGRADE, MP, SP, UNIT_TYPE_TO_INDEX, INDEX_TO_UNIT_TYPE
 
         WALL = config["unitInformation"][0]["shorthand"]
         SUPPORT = config["unitInformation"][1]["shorthand"]
@@ -65,6 +65,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         SCOUT = config["unitInformation"][3]["shorthand"]
         DEMOLISHER = config["unitInformation"][4]["shorthand"]
         INTERCEPTOR = config["unitInformation"][5]["shorthand"]
+        REMOVE = config["unitInformation"][6]["shorthand"]
+        UPGRADE = config["unitInformation"][7]["shorthand"]
         UNIT_TYPE_TO_INDEX = {
             WALL: 0,
             SUPPORT: 1,
@@ -72,6 +74,18 @@ class AlgoStrategy(gamelib.AlgoCore):
             SCOUT: 3,
             DEMOLISHER: 4,
             INTERCEPTOR: 5,
+            REMOVE: 6,
+            UPGRADE: 7,
+        }
+        INDEX_TO_UNIT_TYPE = {
+            0: WALL,
+            1: SUPPORT,
+            2: TURRET,
+            3: SCOUT,
+            4: DEMOLISHER,
+            5: INTERCEPTOR,
+            6: REMOVE,
+            7: UPGRADE,
         }
         MP = 1
         SP = 0
@@ -96,7 +110,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # for the second turn and turns after, we can record state, next_state, action and reward
         else:
             self.next_state = self.get_state(game_state)
-            self.reward = self.get_reward(game_state)
+            #self.reward = self.get_reward(game_state)
 
             self.transition_dict['states'].append(self.state)
             self.transition_dict['actions'].append(self.action)
@@ -106,7 +120,9 @@ class AlgoStrategy(gamelib.AlgoCore):
 
             self.state = self.next_state
 
+        self.reward = 0 # reset every turn
         self.update_health(game_state)
+        # do this round's actions
         action = self.get_actions(self.state)
         self.action = action.detach().numpy()
         self.take_action(action, game_state)
@@ -143,11 +159,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.my_health = game_state.my_health
         self.en_health = game_state.enemy_health
 
-    def get_reward(self, game_state):
-        # main objective: reduce enemy health and reserve my health
-        health_diff = 50*(self.en_health - game_state.enemy_health) - 100*(self.my_health - game_state.my_health)
-        # invalid actions are punished in take_action() for quick learning
-        return self.reward + health_diff
+    # def get_reward(self, game_state):
+    #     # main objective: reduce enemy health and reserve my health
+    #     # health_diff = (self.en_health - game_state.enemy_health) - 2*(self.my_health - game_state.my_health)
+    #     #gamelib.debug_write(f'enemy health: {game_state.enemy_health}, my health: {game_state.my_health}')
+    #     # invalid actions are punished in take_action() for quick learning
+    #     return self.reward + health_diff
 
     # state dim: 426
     # return dim: 8 * 210
@@ -156,6 +173,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         actions = self.agent.actor(input_state)
         actions = torch.reshape(actions, (8, -1))
         #gamelib.debug_write(f"Actions shape: {actions.shape}")
+
+        # # 添加熵奖励
+        # action_probs = torch.sigmoid(actions)
+        # entropy = -(action_probs * torch.log(action_probs + 1e-10) + (1-action_probs) * torch.log(1-action_probs + 1e-10))
+        # self.reward += 0.01 * entropy.mean().item()  # 小幅度奖励探索
+    
         return actions
 
     #
@@ -165,49 +188,42 @@ class AlgoStrategy(gamelib.AlgoCore):
         # 6: Upgrade
         # 7: Remove
         for idx, action in enumerate(actions):
-            # # normalize the probability map of this action
-            # action,_ = torch.sort(F.softmax(action, dim=0))
-            # filter out locations with probability less than 0.0005
             selected_idx = torch.nonzero(action>0.5).squeeze().numpy()
-            print(selected_idx)
+            #selected_idx = torch.sort(action, descending=True)[1].squeeze().numpy()
+
             # get the locations
             locations = []
             for i in selected_idx:
                 x, y = self.state_pos_map(i)
-                locations.append([x, y])
+                if game_state.can_spawn(INDEX_TO_UNIT_TYPE[idx], (x, y)):
+                    locations.append([x, y])
 
-            # filter out invalid locations and reward valid actions
-            self.reward = 0 # reset from last turn
-            ori_loc_num = len(locations)
-            if idx in [0, 1, 2]: # construction only place at empty spots
-                locations = [loc for loc in locations if len(game_state.game_map[loc[0], loc[1]]) == 0]
-                self.reward += len(locations)
-            elif idx in [3, 4, 5]: # attack only place at borders
-                borders = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
-                locations = [loc for loc in locations if loc in borders]
-                self.reward += 5*len(locations) # encourage attacking
-            elif idx in [6, 7]: # only remove/upgrade if there is a unit
-                locations = [loc for loc in locations if len(game_state.game_map[loc[0], loc[1]]) > 0]
-                self.reward += len(locations)
-            # self.reward -= 0.5*(ori_loc_num - len(locations))
+            # randomly select half of the locations and randomize the order
+            random.shuffle(locations)
 
             # WALL
             if idx == 0 and locations:
+                locations = random.sample(locations, 10)
                 game_state.attempt_spawn(WALL, locations)
             # SUPPORT
             elif idx == 1 and locations:
+                locations = random.sample(locations, 2)
                 game_state.attempt_spawn(SUPPORT, locations)
             # TURRET
             elif idx == 2 and locations:
+                locations = random.sample(locations, 8)
                 game_state.attempt_spawn(TURRET, locations)
             # SCOUT
             elif idx == 3 and locations:
+                locations = random.sample(locations, 1)
                 game_state.attempt_spawn(SCOUT, locations)
             # DEMOLISHER
             elif idx == 4 and locations:
+                locations = random.sample(locations, 1)
                 game_state.attempt_spawn(DEMOLISHER, locations)
             # INTERCEPTOR
             elif idx == 5 and locations:
+                locations = random.sample(locations, 1)
                 game_state.attempt_spawn(INTERCEPTOR, locations)
             # REMOVE
             elif idx == 6 and locations:
@@ -219,31 +235,31 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     # pos range from 0 - 209
     def state_pos_map(self, pos):
-        x, y = 13, 0
+        x, y = 0, 13
         count = 28
         while pos >= count:
-            x -= 1
-            y += 1
+            x += 1
+            y -= 1
             pos -= count
             count -= 2
-        return x, y + pos
+        return x + pos, y
 
 
     def game_pos_map(self, x, y):
         count = 28
         res = 0
-        if x >= 14:
-            while x > 14:
+        if y >= 14:
+            while y > 14:
                 res += count
                 count -= 2
-                x -= 1
-            res += y - (28 - count) // 2 + 213
+                y -= 1
+            res += x - (28 - count) // 2 + 213
         else:
-            while x < 13:
+            while y < 13:
                 res += count
-                x += 1
+                y += 1
                 count -= 2
-            res += y - (28 - count) // 2
+            res += x - (28 - count) // 2
         return res
 
 
@@ -264,6 +280,30 @@ class AlgoStrategy(gamelib.AlgoCore):
             self.transition_dict['dones'] = 0
             np.save('transition_dict.npy', self.transition_dict)
 
+        for selfDestruct in events["selfDestruct"]:
+            sd_location = selfDestruct[0]
+            # if location is in our side of the map, punish
+            if sd_location[1] < 14:
+                self.reward -= 0.05
+        # add reward for units events
+        for damage in events["damage"]:
+            # if damage[4] == 1 and damage[2] in [3, 4, 5]: # our mobile units damaged
+            #     self.reward -= 0.1*damage[1]
+            # else: # enemy units damaged or our construction damaged meaning they protected edge
+            #     self.reward += 0.1*damage[1]
+            self.reward += 0.1*damage[1]
+        for shield in events["shield"]:
+            if shield[6] == 1:
+                self.reward += 0.1*shield[2]
+        for spawn in events["spawn"]:
+            if spawn[3] == 1:
+                self.reward += 0.1
+                if spawn[1] in [3,4,5]: # encourage mobile units
+                    self.reward += 0.1
+        for attack in events["attack"]:
+            if attack[6] == 1:
+                self.reward += 0.2
+
         for breach in breaches:
             location = breach[0]
             unit_owner_self = True if breach[4] == 1 else False
@@ -273,6 +313,9 @@ class AlgoStrategy(gamelib.AlgoCore):
                 #gamelib.debug_write("Got scored on at: {}".format(location))
                 self.scored_on_locations.append(location)
                 #gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
+                self.reward -= 2
+            else:
+                self.reward += 2
 
 
 if __name__ == "__main__":
