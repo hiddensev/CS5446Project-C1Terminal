@@ -12,13 +12,9 @@ class PolicyNet(torch.nn.Module):
         self.fc1 = torch.nn.Linear(state_dim, hidden_dim)
         self.fc2 = torch.nn.Linear(hidden_dim, action_dim)
 
-        # Initialize the final layer with zeros to get uniform probabilities
-        torch.nn.init.zeros_(self.fc2.weight)
-        torch.nn.init.zeros_(self.fc2.bias)
-
     def forward(self, x):
         x = F.relu(self.fc1(x))
-        return F.softmax(self.fc2(x), dim=1)
+        return F.sigmoid(self.fc2(x))
 
 
 class ValueNet(torch.nn.Module):

@@ -114,7 +114,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.submit_turn()
 
     def get_state(self, game_state):
-        res = np.zeros(426)
+        res = np.zeros(426)-1
         # get resources
         my_points = game_state.get_resources(0)
         en_points = game_state.get_resources(1)
@@ -146,12 +146,10 @@ class AlgoStrategy(gamelib.AlgoCore):
     def get_reward(self, game_state):
         # main objective: reduce enemy health and reserve my health
         health_diff = 50*(self.en_health - game_state.enemy_health) - 100*(self.my_health - game_state.my_health)
-        # reserving points is good
-        # res_diff = 0.1*(sum(game_state.get_resources(0)) - sum(game_state.get_resources(1)))
         # invalid actions are punished in take_action() for quick learning
         return self.reward + health_diff
 
-    # state dim: 213
+    # state dim: 426
     # return dim: 8 * 210
     def get_actions(self, states):
         input_state = torch.tensor(np.array([states]), dtype=torch.float).to(self.device)
@@ -167,27 +165,31 @@ class AlgoStrategy(gamelib.AlgoCore):
         # 6: Upgrade
         # 7: Remove
         for idx, action in enumerate(actions):
-            # normalize the probability map of this action
-            action,_ = torch.sort(F.softmax(action, dim=0))
+            # # normalize the probability map of this action
+            # action,_ = torch.sort(F.softmax(action, dim=0))
             # filter out locations with probability less than 0.0005
-            selected_idx = torch.nonzero(action>0.0005).squeeze().numpy()
+            selected_idx = torch.nonzero(action>0.5).squeeze().numpy()
+            print(selected_idx)
             # get the locations
             locations = []
             for i in selected_idx:
                 x, y = self.state_pos_map(i)
                 locations.append([x, y])
 
-            # filter out invalid locations and punish invalid actions
+            # filter out invalid locations and reward valid actions
             self.reward = 0 # reset from last turn
             ori_loc_num = len(locations)
             if idx in [0, 1, 2]: # construction only place at empty spots
                 locations = [loc for loc in locations if len(game_state.game_map[loc[0], loc[1]]) == 0]
+                self.reward += len(locations)
             elif idx in [3, 4, 5]: # attack only place at borders
                 borders = game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_LEFT) + game_state.game_map.get_edge_locations(game_state.game_map.BOTTOM_RIGHT)
                 locations = [loc for loc in locations if loc in borders]
+                self.reward += 5*len(locations) # encourage attacking
             elif idx in [6, 7]: # only remove/upgrade if there is a unit
                 locations = [loc for loc in locations if len(game_state.game_map[loc[0], loc[1]]) > 0]
-            self.reward -= ori_loc_num - len(locations)
+                self.reward += len(locations)
+            # self.reward -= 0.5*(ori_loc_num - len(locations))
 
             # WALL
             if idx == 0 and locations:
